@@ -1,0 +1,35 @@
+#!/bin/sh
+
+date
+# List all file systems to be dumped
+DmpList="/dev/ad0s3a /dev/ad0s3f /dev/ad0s3e /dev/ad0s3g"
+DscList="root home usr var"    ## A description of the file systems to be dumped
+
+echo "Begin backup"
+
+mount ursus:/data2 /mnt || exit
+	
+level=0;
+set ${DscList}
+
+for SrcDev in ${DmpList}; do
+	echo " "
+	echo "Dumping ${SrcDev}    ${1}"
+	#dump -${level}auf /mnt/backups/redbud/${1}.bck ${SrcDev}    # /
+	dump -${level}auf /mnt/archives/redbud/${1}.bck ${SrcDev}    # /
+	date
+	shift
+done
+
+# Backup these
+#/dev/ad0s3a  /        root
+#/dev/ad0s3f  /home    home
+#/dev/ad0s3e  /usr     usr
+#/dev/ad0s3g  /var     var
+#
+# Ignore these
+#/dev/ad2s1e  /data1
+#/dev/ad0s3h  /tmp     tmp
+
+umount /mnt
+echo "Done"

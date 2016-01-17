@@ -1,0 +1,73 @@
+#!/bin/sh
+# -----------------------------------------------------------------
+#   $Id$
+#   $Name$
+# -----------------------------------------------------------------
+
+# archives the file systems to a remote host
+# Use this to archive selected file systems to a "master" host.
+# This script should be used on hosts where only an initial backup
+# and not periodic backups are required.
+# The master host will be backup periodically.
+
+# List all file systems to be dumped
+DmpList="/dev/ad0s3a /dev/ad0s3g /dev/ad0s3f /dev/ad0s3e"
+DscList="root var home usr"    ## A description of the file systems to be dumped
+#---------------------------------------------------------------------
+# /dev/ad0s3a     /       ufs rw  1 1
+# /dev/ad0s3g     /var    ufs rw  2 2
+# /dev/ad0s3f     /home   ufs rw  2 2
+# /dev/ad0s3e     /usr    ufs rw  2 2
+#---------------------------------------------------------------------
+RHost=ursus     # File systems from this host will be dumped to ursus
+RDisk=/data2
+Level=0;
+Debug=
+
+echo "Begin backup"
+date
+
+# See if /mnt already used as mount point. If so, exit
+mount | (grep ' on /mnt ' >/dev/null)
+RtnC=$?
+if [ ${RtnC} -eq 0 ]; then
+	echo "mount point /mnt already being used"
+	exit
+fi
+mount ${RHost}:${RDisk} /mnt || exit
+
+# Trap likely signals so we unmount nfs drive
+trap 'echo "Quitting  2";umount /mnt;exit' 2  # INT
+trap 'echo "Quitting  9";umount /mnt;exit' 9  # KILL Why?, this won't execute anyway
+trap 'echo "Quitting 15";umount /mnt;exit' 15 # TERM
+echo "${RHost}:/${RDisk} mounted on /mnt"
+
+
+# we need to mount a remote drive
+Hostname=`hostname | cut -d"." -f1`
+TargetDir=/mnt/archives/${Hostname}
+
+## Make sure the target directory exists
+test -d ${TargetDir} || mkdir ${TargetDir}
+
+FileName=${TargetDir}/job.`date "+%Y%m%d"`  # List of each backup
+echo "backup ${Hostname}   `date`" > ${FileName}
+	
+set ${DscList}
+
+Ext=`date +"%w"`.L${Level}.dmp
+Count=0
+
+for SrcDev in ${DmpList}; do
+	Count=`expr ${Count} + 1`
+	echo " "
+	Targ=${TargetDir}/`basename ${SrcDev}`.${Ext}  # Target (dest of dump file)
+	test ${Debug} || dump -${Level}auf ${Targ} ${SrcDev} > /dev/null
+	test ${Debug} || \
+		echo "${Count} `date +'%H:%M:%S'` Dump ${SrcDev}  ${1}   ${Targ}" >> ${FileName}
+	date
+	shift
+done
+
+umount /mnt
+echo "Done"

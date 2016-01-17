@@ -1,0 +1,129 @@
+#!/bin/sh
+# -----------------------------------------------------------------
+#   $Id: dump_bck.local,v 1.1 2004/08/13 10:20:07 rob Exp $
+#   $Name:  $
+# -----------------------------------------------------------------
+#
+# Use to run periodic backups
+# Dump to local disk
+# Selected directories are written to tar files on remote backup
+#   server.
+# Selected file systems are dumped to files on remote backup server
+#   using the dump/restore facility
+
+case $1 in
+	'') Level=`date +%w` ;;
+	[0-9]) Level=$1 ;;
+	*) echo Usage:  `basename $0` level '#level == [0-9]' 1>&2; exit 1 ;;
+esac
+
+#-- Set these options ---------------------------------------------
+Debug=
+## Level=0
+# -----------------------------------------------------------------
+## Destination host and directory
+##RHost=redbud
+RDrive=/data1
+
+# See if /mnt already used as mount point. If so, exit
+##mount | (grep ' on /mnt ' >/dev/null)
+##RtnC=$?
+##if [ ${RtnC} -eq 0 ]; then
+##	echo "mount point /mnt already being used"
+##	exit
+##fi
+##mount ${RHost}:${RDrive} /mnt || exit
+
+### Trap likely signals so we unmount nfs drive
+##trap 'echo "Quitting  2";umount /mnt;exit' 2  # INT
+##trap 'echo "Quitting  9";umount /mnt;exit' 9  # KILL Why?, this won't execute anyway
+##trap 'echo "Quitting 15";umount /mnt;exit' 15 # TERM
+##echo "${RHost}:${RDrive} mounted on /mnt"
+
+# we need to mount a remote drive
+Hostname=`hostname | cut -d"." -f1`
+##TargetDir=/mnt/backups/${Hostname}
+TargetDir=/data1/backups/${Hostname}
+
+## Make sure the target directory exists
+test -d ${TargetDir} || mkdir ${TargetDir}
+
+Count=0;
+FileName=${TargetDir}/job.L${Level}.`date "+%Y%m%d"`  # List of each backup
+
+# -----------------------------------------------------------------------------
+# List all files/directories to be tarred nightly
+TarList="/etc/cron.d /usr/local/etc"
+
+# If this is a level 1 backup, do the following:
+#    1. Clean the backup directory ( Delete all in $TargetDir
+#    2. Tar any files that are to be backup for a level 0
+
+echo "Level = ${Level}"
+if [ ${Level} -eq 0 ]; then
+
+	# hardcode the directory as a precaution:
+	echo "For Level 0 we remove all previous backup files in ${TargetDir}"
+	##rm -f /mnt/backups/ursus/*
+	rm -f ${TargetDir}/*
+
+	# Only tar these file when we do a level 0 backup
+	#TarList="${TarList} /data2/archives/pisces /data2/archives/redbud /usr/ports/distfiles"
+fi
+
+# List all file systems to be dumped
+#DmpList="/dev/ad0s1a /dev/ad0s1g /dev/ad1s1e"
+#DscList="root data2 data4"    ## A description of the file systems to be dumped
+#
+DmpList="/dev/ad0s1a /dev/ad0s1g"
+DscList="root data2"    ## A description of the file systems to be dumped
+##
+# -----------------------------------------------------------------------------
+# /dev/ad0s1a /
+# /dev/ad0s1d /data2
+# /dev/ad1s1e /data1
+# -----------------------------------------------------------------------------
+
+
+
+echo "-------------------------------------------------------"
+test ${Debug} || echo "`date`     Nighly backup"  > ${FileName}
+                 echo "`date`     Nighly backup"
+
+Ext=`date +"%w"`.tar
+
+for SrcPath in ${TarList}; do
+	Count=`expr ${Count} + 1`
+	WDir=`dirname ${SrcPath}`       # Working directory
+	SDir=`basename ${SrcPath}`      # Source directory ( to be copied )
+	Targ=${TargetDir}/${SDir}.${Ext} # Target (destination of tar file)
+
+	echo " "
+	test ${Debug} || ( cd ${WDir}; tar cf ${Targ} ${SDir} )
+	test ${Debug} || echo "${Count} `date +'%H:%M:%S'` Tar ${SrcPath}   ${Targ}" >> ${FileName}
+	                 echo "${Count} `date +'%H:%M:%S'` Tar ${SrcPath}   ${Targ}"
+done
+	
+
+Ext=`date +"%w"`.L${Level}.dmp
+set ${DscList}
+
+for SrcDev in ${DmpList}; do
+	Count=`expr ${Count} + 1`
+	Targ=${TargetDir}/`basename ${SrcDev}`.${Ext}  # Target (dest of dump file)
+	echo " "
+   echo "${Count} `date +'%H:%M:%S'` Dump ${SrcDev}  ${1}   ${Targ}"
+	test ${Debug} || dump -${Level}Lauf ${Targ} ${SrcDev} > /dev/null
+	test ${Debug} || \
+		echo "${Count} `date +'%H:%M:%S'` Dump ${SrcDev}  ${1}   ${Targ}" >> ${FileName}
+	shift
+done
+
+echo " "
+echo "-------------------------------------------------------"
+test ${Debug} || echo "`date`      Nightly dump completed" >> ${FileName}
+                 echo "`date`      Nightly dump completed"
+test ${Debug} || cat ${FileName}
+#test ${Debug} || mail -s "Nightly backup" root < ${FileName}
+
+##umount /mnt
