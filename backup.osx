@@ -1,0 +1,78 @@
+#!/bin/sh
+## -----------------------------------------------------------
+## A basic backup tar script
+## NOTES:
+## Put this file into $HOME/bin
+## Requires conf file with name $HOME/etc/backup.conf (This file is "sourced")
+## Make sure that backup.conf has the correct settings
+## Make sure that the backup destination resides on a mounted filesystem.
+## Some error checking is done like file/dir existence testing
+## The tar is silent and no messages are printed until the end. (to show messages, change the tar command to: "tar vfc")
+## -----------------------------------------------------------
+## mount cifs://tulfilera/Users
+##  //tulfilera/Users      /Volumes/Users
+ConfFile=${HOME}/etc/backup.conf.osx
+#
+## if [ $# -gt 0 -a $1 = "-config" ];then
+## cat <<END_OF_DATA
+## TarList="bin .m2 Documents idea workspace etc"
+## Excludes="deleteme tmp"
+## BckupPath=/Volumes/HOME
+## BckupBasename=robertp_backup
+## END_OF_DATA
+## exit 1
+## elif [ $1 = "-h" ] ; then
+##     echo "Backs up directories defined in config file: $ConfFile"
+##     echo "Usage:   backup   Without arguments, performs backup"
+##     echo "         backup -config   displays a sample configuration file that is required in $ConfFile"
+##     exit 1;
+## fi
+
+## Test these first
+cd $HOME
+test -e ${ConfFile} || { echo "Configuration file ${ConfFile} does not exist";exit 1; }
+. ${ConfFile}
+##
+test "X$BckupPath" = "X" && { echo "BckupPath not set in config file";exit 1; }
+test "X$BckupBasename" = "X" && { echo "BckupBasename not set in config file";exit 1; }
+test -d $BckupPath || { echo "$BckupPath does not exist. Please create";exit 1; }
+
+Sfx=`date +%y%m%d`
+TmpDir=${TmpDirBase}.${Sfx}
+test -d $TmpDir && { echo "Removing tmp directory: $TmpDir";rm -rf $TmpDir;echo "Removed"; }
+mkdir $TmpDir
+
+BckupDest=$BckupPath/$BckupBasename.$Sfx
+test -d $BckupDest || { mkdir $BckupDest;echo "created $BckupDest"; }
+
+echo "Backup Path: $BckupPath"
+echo "Temp dest: $BckupDest"
+#echo $TarList
+
+echo "^^^ Start time: `date`"
+#tar fc - $TarList | gzip -c > $BckupFile
+for i in $TarList; do
+    ##du -sh $i
+    Name=`basename $i`.$Sfx
+    DstFile=$TmpDir/$Name.tar.gz
+    #test -e $DstFile && DstFile=$TmpDir/$Name.`date "+%H%M%S"`.tar.gz
+    echo "... Creating `basename $DstFile`"
+    tar fc - $i | gzip -c > $DstFile
+    echo "       created"
+    cp $DstFile $BckupDest
+    rm $DstFile
+    echo "       moved $i to $BckupDest"
+done
+
+## process file list
+DstFile=$TmpDir/RGP_configfiles.tar.gz
+echo "... Creating `basename $DstFile`"
+tar vfc - $FileList | gzip -c > $DstFile
+echo "       created"
+cp $DstFile $BckupDest
+rm $DstFile
+
+echo "Removing temp directory $TmpDir"
+rmdir $TmpDir
+echo "\$\$\$ End time: `date`"
+exit 0
