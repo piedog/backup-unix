@@ -1,0 +1,20 @@
+## Destination drive
+RDrive=/data1
+
+## Backup format can be unix dump format or tar format
+##
+## Unix dump format:
+## backup files are placed in TargetDir using this format:
+##           FileName=${TargetDir}/job.L${Level}.`date "+%Y%m%d"`
+TargetDir=/data1/backups     ## /${hostname} is appended to TargetDir
+
+
+## tar format:
+##
+## backup files are placed in TargetDir using this format:
+##          Targ=${TargetDir}/${SDir}.${Ext} # Target (destination of tar file)
+##              SDir=`basename ${SrcPath}`
+##              where SDir in TarList similar to this example:
+##                  TarList="/etc/cron.d /usr/local/etc"
+##
+TarList="/etc/cron.d /usr/local/etc"
