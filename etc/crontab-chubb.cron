@@ -1,0 +1,4 @@
+SHELL=/bin/sh
+PATH=/sbin:/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin:/root/bin
+# Nightly backup script
+0 01 * * * ( backup --config-file /usr/local/etc/backup-chubb.conf --level `date +\%w` )

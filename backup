@@ -1,83 +1,220 @@
 #!/bin/sh
-##  TODO:
-##  Fix this error:
-##    tar: /usr/local/apr/include/apr-0/apr_allocator.h: Cannot open: Permission denied
-## -----------------------------------------------------------
-## A basic backup tar script
-## NOTES:
-## Put this file into $HOME/bin
-## Requires conf file with name $HOME/etc/backup.conf (This file is "sourced")
-## Make sure that backup.conf has the correct settings
-## Make sure that the backup destination resides on a mounted filesystem.
-## Some error checking is done like file/dir existence testing
-## The tar is silent and no messages are printed until the end. (to show messages, change the tar command to: "tar vfc")
-## -----------------------------------------------------------
-## mount cifs://tulfilera/Users
-##  //tulfilera/Users      /Volumes/Users
-ConfFile=${HOME}/etc/backup.conf
-#ConfFile=${HOME}/bin/backup.conf
+
 #
-## if [ $# -gt 0 -a $1 = "-config" ];then
-## cat <<END_OF_DATA
-## TarList="bin .m2 Documents idea workspace etc"
-## Excludes="deleteme tmp"
-## BckupPath=/Volumes/HOME
-## BckupBasename=robertp_backup
-## END_OF_DATA
-## exit 1
-## elif [ $1 = "-h" ] ; then
-##     echo "Backs up directories defined in config file: $ConfFile"
-##     echo "Usage:   backup   Without arguments, performs backup"
-##     echo "         backup -config   displays a sample configuration file that is required in $ConfFile"
-##     exit 1;
-## fi
+# ------------------------------------------------------------------------------
+#
+printUsage() {
+    echo "Usage: test [ --level <n> | -l n ] [ --config-file <filename> | -c <filename> ] [ --debug | -d ] [ --print-config | -p ]"
+    echo "   --level | -l <level>              default: 0"
+    echo "   --config-file | -c <filename>     default: /usr/local/etc/backup.conf"
+    echo "   --debug | -d                      default is no debug"
+    echo "   --print-config | -p               default is no print"
+    ## printf "Usage: %s: [-a] [-b value] args\n"  $
+}
+#
+# ------------------------------------------------------------------------------
+#
+printSettings () {
+    echo "Config settings:"
+    echo "  RHost         : ${RHost}"
+    echo "  RDrive        : ${RDrive}"
+    echo "  Mntpnt        : ${Mntpnt}"
+    echo "  DstDir        : ${DstDir}"
+    echo "  DmpList       : ${DmpList}"
+    echo "  TarList       : ${TarList}"
+    echo "  TarExcludeList: ${TarExcludeList}"
+    echo "  TarSkipTag    : ${TarSkipTag}"
+    echo ""
+    echo "Command line settings:"
+    echo "  Level       : ${Level}"
+    echo "  ConfigFile  : ${ConfigFile}"
+    echo "  PrintConf   : ${PrintConf}"
+    echo "  Debug       : ${Debug}"
+}
 
-## Test these first
-cd $HOME
-test -e ${ConfFile} || { echo "Configuration file ${ConfFile} does not exist";exit 1; }
-. ${ConfFile}
-##
-test "X$BckupPath" = "X" && { echo "BckupPath not set in config file";exit 1; }
-test "X$BckupBasename" = "X" && { echo "BckupBasename not set in config file";exit 1; }
-test -d $BckupPath || { echo "$BckupPath does not exist. Please create";exit 1; }
-#test -d $BckupBasename || { echo "$BckupBasename does not exist";exit 1; }
+checkDestDir () {
+    ## Check the destination dir for existence
+    test -z $DstDir && { echo "Name of DstDir required required but not defined"; unmountRemote; exit 2; }
+    test -d $DstDir || { echo "DstDir ($DstDir) does not exist"; unmountRemote; exit 2; }
+    BackupPath=$DstDir
+}
 
-Sfx=`date +%y%m%d`
-TmpDir=${HOME}/tmp_backup.$Sfx
-test -d $TmpDir && { echo "Removing tmp directory: $TmpDir";rm -rf $TmpDir;echo "Removed"; }
-mkdir $TmpDir
+unmountRemote () {
+    test "$DidMount" = "true" && { echo "unmounting $Mntpnt"; umount $Mntpnt; echo "$Mntpnt unmounted"; }
+}
 
-BckupDest=$BckupPath/$BckupBasename.$Sfx
-test -d $BckupDest || { mkdir $BckupDest;echo "created $BckupDest"; }
+errorExit () {
+    echo "*** (Fatal error) $1"
+    test "$2" = "true" && printUsage
+    exit 2
+}
+# ------------------------------------------------------------------------------
+## Set defaults
+Level=0
+ConfigFile=/usr/local/etc/backup.conf      ## ./test --config-file etc/backup_tst1.conf
+PrintConf=false
+Debug=false
 
-echo "Backup Path: $BckupPath"
-echo "Temp dest: $BckupDest"
-#echo $TarList
+## Process command line input
+while [ $1 ]; do
+    case "$1" in
+    -l | --level ) shift
+        Level=$1;;
 
-echo "^^^ Start time: `date`"
-#tar fc - $TarList | gzip -c > $BckupFile
-for i in $TarList; do
-    ##du -sh $i
-    Name=`basename $i`.$Sfx
-    DstFile=$TmpDir/$Name.tar.gz
-    #test -e $DstFile && DstFile=$TmpDir/$Name.`date "+%H%M%S"`.tar.gz
-    echo "... Creating `basename $DstFile`"
-    tar fc - $i | gzip -c > $DstFile
-    echo "       created"
-    cp $DstFile $BckupDest
-    rm $DstFile
-    echo "       moved $i to $BckupDest"
+    -c | --config-file ) shift
+        ConfigFile=$1
+        case $Level in [0-6]) ;; *) echo "Invalid level (${Level}). Must be 0-6"; exit 4;; esac
+        ;;
+
+    -p | --print-config ) PrintConf=true;;
+
+    -d | --debug ) Debug=true;;
+
+    -h | --help ) printUsage
+        exit 1;;
+
+    * ) echo "Error: invalid parameter: ($1)"
+        printUsage
+        exit 1;;
+    esac
+    shift
 done
 
-## process file list
-DstFile=$TmpDir/RGP_configfiles.tar.gz
-echo "... Creating `basename $DstFile`"
-tar vfc - $FileList | gzip -c > $DstFile
-echo "       created"
-cp $DstFile $BckupDest
-rm $DstFile
+Target=
+DidMount=false
+UseTmp=true
+BackupPath=
+TarExcludeList=
+TarSkipTag=
 
-echo "Removing temp directory $TmpDir"
-rmdir $TmpDir
-echo "\$\$\$ End time: `date`"
+##
+## -------------------------------------------------------------------------------
+## Setting from the config file:
+##
+test  -z $ConfigFile && { echo "ConfigFile ($ConfigFile) not defined"; exit 2; }
+test -f $ConfigFile && { . $ConfigFile; echo "ConfigFile ($ConfigFile) sourced"; } || { echo "ConfigFile ($ConfigFile) not found";exit 2; }
+##
+## -------------------------------------------------------------------------------
+
+test "$PrintConf" = "true" && printSettings
+
+if [ -z $RHost ] || [ "$RHost" = "`hostname`" ] ; then
+    echo "Remote host not set or is the same as localhost. Backup destination will be localhost"
+    UseTmp=false
+    checkDestDir            ## if destination dir not defined or is non-existent, this will exit
+    BackupPath=$DstDir
+else
+    ping -c1 $RHost >/dev/null 2>/dev/null
+    test $? -ne 0 && { echo "host $RHost not found on network"; exit 2; }
+
+    echo "### host $RHost found; will backup to remote host $RHost"
+    ## check mount point
+    test -z $Mntpnt &&  { echo "Name of mount point is not defined or is invalid; exiting"; exit 2; }
+    test -d $Mntpnt ||  { echo "Mount point ($Mntpnt) does not exist; exiting"; exit 2; }
+    test -z $RDrive  &&  { echo "Remote partition ($RDrive) not defined; exiting"; exit 2; }
+    ##
+    ## check temporary dir
+    if [ -z $TmpDir ]; then     ## is empty string, then no temp directory
+        echo "### TmpDir not defined; backup directly to remote host"
+        UseTmp=false
+    else                        ## Use temp directory, then copy to remote
+        UseTmp=true
+        ## does directory exist?
+        test -d $TmpDir || { echo "Temporary dir ($TmpDir) specified but not found; exiting"; exit 2; }
+        BackupPath=$TmpDir
+    fi
+
+
+
+    ##
+    ## at this point we know to backup to remote drive
+    mount | grep " on $Mntpnt " > /dev/null && { echo "*** mount point $Mntpnt already used.  Exiting..."; exit 2; }
+    echo "### Mount point $Mntpnt not in use; OK to mount"
+    echo "[mount $RHost:$RDrive $Mntpnt]"
+    mount $RHost:$RDrive $Mntpnt || { echo "Unable to mount ($RHost:$RDrive on $Mntpnt). Exiting..."; exit 2; }
+
+    # Trap likely signals so we unmount nfs drive
+    trap 'echo "*** Quitting  2";unmountRemote;exit' 2  # INT
+    trap 'echo "*** Quitting  9";unmountRemote;exit' 9  # KILL Why?, this won't execute anyway
+    trap 'echo "*** Quitting 15";unmountRemote;exit' 15 # TERM
+    echo "### ${RHost}:$RDrive mounted on $Mntpnt"
+    DidMount=true
+
+    ##sleep 10
+
+    checkDestDir
+
+    test "$UseTmp" = "true" && { BackupPath=$TmpDir; } || { BackupPath=$DstDir; }
+    echo "### UseTmp=$UseTmp; Backup to $BackupPath"
+fi
+
+
+
+## ----------------------------------------------------------------------------------
+
+sfx=`date +%Y%m%d.%H%M`.dmp
+
+echo "### Number of backup files in backup directory: `ls -1 $DstDir | wc -l`"
+echo "### Total bytes: `du -sh $DstDir`"
+
+test $Level -eq 0 && { echo "### Level 0 specified; cleaning $DstDir"; rm $DstDir/*.tar.gz; rm $DstDir/*.dmp; }
+        ## could to this: Level=`date +%w`
+
+set -- $DmpList
+while [ $# -gt 0 ]; do
+    Fs=$1; shift
+    Nm=$1; shift
+    DstFile=$BackupPath/L${Level}.$Nm.$sfx
+    echo "### Creating $DstFile"
+
+## get this message when running dump with -L option:
+## [dump -3Lauf /data1/backups/chubb/home.20170726.0808.dmp /dev/ada0p4]
+##  mksnap_ffs: Cannot create snapshot /home/.snap/dump_snapshot: /home: Snapshots are not
+##  yet supported when running with journaled soft updates: Operation not supported
+##  dump: Cannot create /home/.snap/dump_snapshot: No such file or directory
+##  Disable for now
+  
+  # Cmd="dump -Lauf $DstFile $Fs"
+    Cmd="dump -${Level}auf $DstFile $Fs"
+    echo "   [${Cmd}]"
+    $Cmd
+    echo "### Created $DstFile"
+    ##cp $DstFile $BckupDest
+    ##rm $DstFile
+    test "$UseTmp" = "true" && { echo "### Copy $DstFile to $DstDir"; cp $DstFile $DstDir; rm $DstFile; echo "### Deleted $DstFile"; }
+done
+
+
+## Note: tar files are always gzipped
+sfx=`date +%Y%m%d.%H%M`.tar.gz
+
+set -- $TarList
+while [ $# -gt 0 ]; do
+    Fs=$1; shift
+    Nm=$1; shift
+
+    ## set command flags
+    CmdFlags=""
+    test -z "$TarExcludeList" || CmdFlags="$CmdFlags --exclude=$TarExcludeList"
+    test -z $TarSkipTag || CmdFlags="$CmdFlags --exclude-tag=$TarSkipTag"
+
+    DstFile=$BackupPath/$Nm.$sfx
+    echo "### Creating `basename $DstFile`"
+    ##Cmd="tar cf $DstFile $Fs"
+    Cmd="tar cf - $Fs $CmdFlags"
+    ##  --exclude-tag=.skip_backup --exclude={.core.zcompdump,deleteme*,*.core,*.dmp,./workspace}
+    #test -z "$TarExcludeList" || Cmd="$Cmd --exclude=$TarExcludeList"
+    #test -z $TarSkipTag || Cmd="$Cmd --exclude-tag=$TarSkipTag"
+    echo "   [${Cmd} | gzip -c > $DstFile]"
+    ${Cmd} | gzip -c > $DstFile
+    echo "### Created $DstFile"
+    test "$UseTmp" = "true" && { echo "### Copy $DstFile to $DstDir";cp $DstFile $DstDir; rm $DstFile; echo "### Deleted $DstFile"; }
+done
+
+
+## if backup is to remote host, then unmount
+## delete test "$DidMount" = "true" && { echo "unmounting $Mntpnt"; umount $Mntpnt; echo "$Mntpnt unmounted"; }
+unmountRemote
+echo "exited successfully"
+## ----------------------------------------------------------------------------------
 exit 0
